@@ -159,7 +159,7 @@ func Name() string {
 		}
 	}
 	// OpenClaw also sets tui-local for commands the user runs from its TUI.
-	if os.Getenv(envOpenClawShell) == "exec" {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(envOpenClawShell)), "exec") {
 		return "openclaw"
 	}
 	if name := supportedName(os.Getenv(envAIIdentity)); name != "" {
