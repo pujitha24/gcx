@@ -98,6 +98,7 @@ Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not t
 | `GOOSE_TERMINAL` | Goose | Boolean identity signal on supported shell paths |
 | `OPENCODE` | OpenCode | Boolean identity signal |
 | `PI_CODING_AGENT` | Pi | Boolean identity signal |
+| `OPENCLAW_SHELL` | OpenClaw | The value `exec` enables agent mode. Other values, such as `tui-local` for user commands, are ignored. |
 
 Boolean signals accept `1`, `true`, or `yes`, without case sensitivity.
 Session markers require a non-empty value.
@@ -132,6 +133,7 @@ Only fixed labels reach telemetry. Unknown values fall through to other signals.
 | Pi | `pi` | `PI_CODING_AGENT` |
 | Crush | `crush` | Use an explicit or shared identity |
 | Amazon Q | `amazon-q` | `AMAZON_Q` (existing support) |
+| OpenClaw | `openclaw` | `OPENCLAW_SHELL=exec` |
 
 Aliases map to fixed labels: `github-copilot-cli` → `github-copilot`,
 `kilo` and `kilocode` → `kilo-code`, `droid` → `factory-droid`,
@@ -175,6 +177,11 @@ configuration directories, or the terminal application.
   [retry command path](https://github.com/aaif-goose/goose/blob/main/crates/goose/src/agents/retry.rs).
   These signals do not establish coverage of every shell path.
   Goose moved from Block to AAIF. Its [governance document](https://github.com/aaif-goose/goose/blob/main/GOVERNANCE.md) confirms the project owner.
+- OpenClaw sets `OPENCLAW_SHELL=exec` for commands run by its
+  [exec tool](https://github.com/openclaw/openclaw/blob/main/docs/tools/exec.md).
+  It sets `OPENCLAW_SHELL=tui-local` for shell commands the user runs from its
+  [TUI](https://github.com/openclaw/openclaw/blob/main/docs/web/tui.md), so gcx
+  accepts only `exec`.
 
 Native markers take precedence over the shared `AI_AGENT` fallback and the
 legacy `AGENT=goose` fallback. Shared variables can be inherited from an outer
