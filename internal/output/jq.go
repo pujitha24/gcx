@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -179,10 +180,10 @@ func toJQInput(value any) (any, error) {
 			value = v.Object
 		}
 	case unstructured.UnstructuredList:
-		value = unstructuredItemsAsMap(v.Items)
+		value = unstructuredListAsMap(v)
 	case *unstructured.UnstructuredList:
 		if v != nil {
-			value = unstructuredItemsAsMap(v.Items)
+			value = unstructuredListAsMap(*v)
 		}
 	}
 
@@ -199,10 +200,15 @@ func toJQInput(value any) (any, error) {
 	return parsed, nil
 }
 
-func unstructuredItemsAsMap(items []unstructured.Unstructured) map[string]any {
-	out := make([]any, len(items))
-	for i, item := range items {
-		out[i] = item.Object
+// unstructuredListAsMap keeps list-level fields (e.g. metadata.continue) and
+// overlays the normalized Items, which take precedence over any "items" key.
+func unstructuredListAsMap(list unstructured.UnstructuredList) map[string]any {
+	out := make(map[string]any, len(list.Object)+1)
+	maps.Copy(out, list.Object)
+	items := make([]any, len(list.Items))
+	for i, item := range list.Items {
+		items[i] = item.Object
 	}
-	return map[string]any{"items": out}
+	out["items"] = items
+	return out
 }

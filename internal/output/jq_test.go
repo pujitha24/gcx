@@ -130,6 +130,26 @@ func TestJQCodec_Encode(t *testing.T) {
 			wantValues: []any{[]any{2.0, 3.0}},
 		},
 		{
+			name:  "unstructured list preserves list metadata and items take precedence",
+			query: "[.metadata.continue, .metadata.remainingItemCount, (.items | length), .items[0].metadata.name]",
+			value: unstructured.UnstructuredList{
+				Object: map[string]any{
+					"metadata": map[string]any{"continue": "tok", "remainingItemCount": int64(3)},
+					"items":    []any{"stale"},
+				},
+				Items: []unstructured.Unstructured{{Object: map[string]any{"metadata": map[string]any{"name": "a"}}}},
+			},
+			wantValues: []any{[]any{"tok", 3.0, 1.0, "a"}},
+		},
+		{
+			name:  "unstructured list pointer preserves list metadata",
+			query: ".metadata.continue",
+			value: &unstructured.UnstructuredList{
+				Object: map[string]any{"metadata": map[string]any{"continue": "tok"}},
+			},
+			wantValues: []any{"tok"},
+		},
+		{
 			name:    "runtime error on type mismatch",
 			query:   ".foo | .bar",
 			value:   map[string]any{"foo": 42},
