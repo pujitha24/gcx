@@ -29,6 +29,14 @@ const (
 	dfColLabels = "labels"
 )
 
+// Annotations-backend frame column names: one timestamp, a text summary, the
+// previous and next state, and a JSON "data" string per transition.
+const (
+	dfColPrev = "prev"
+	dfColNext = "next"
+	dfColData = "data"
+)
+
 // StateHistoryOptions configures a state-history query.
 type StateHistoryOptions struct {
 	// RuleUID filters to a single rule. The annotations history backend
@@ -143,6 +151,12 @@ func transitionsFromFrame(frame *dataframe.Frame) ([]StateTransition, error) {
 		cols[f.Name] = i
 	}
 
+	if _, hasLine := cols[dfColLine]; !hasLine {
+		if _, hasPrev := cols[dfColPrev]; hasPrev {
+			return transitionsFromAnnotationsFrame(frame, cols), nil
+		}
+	}
+
 	timeCol := columnValues(frame, cols, dfColTime, 0)
 	lineCol := columnValues(frame, cols, dfColLine, 1)
 	labelCol := columnValues(frame, cols, dfColLabels, 2)
@@ -182,6 +196,48 @@ func transitionsFromFrame(frame *dataframe.Frame) ([]StateTransition, error) {
 		return transitions[i].Time.After(transitions[j].Time)
 	})
 	return transitions, nil
+}
+
+// transitionsFromAnnotationsFrame flattens the frame emitted by the annotations
+// history backend (time, text, prev, next, data) into StateTransition records
+// ordered newest-first. The rule UID is read from the schema field labels.
+func transitionsFromAnnotationsFrame(frame *dataframe.Frame, cols map[string]int) []StateTransition {
+	timeCol := columnValues(frame, cols, dfColTime, 0)
+	prevCol := columnValues(frame, cols, dfColPrev, -1)
+	nextCol := columnValues(frame, cols, dfColNext, -1)
+	dataCol := columnValues(frame, cols, dfColData, -1)
+
+	var ruleUID string
+	if idx, ok := cols[dfColTime]; ok {
+		ruleUID = frame.Schema.Fields[idx].Labels["ruleUID"]
+	}
+
+	transitions := make([]StateTransition, 0, len(timeCol))
+	for i := range timeCol {
+		st := StateTransition{Time: frameTime(timeCol[i]), RuleUID: ruleUID}
+		if i < len(prevCol) {
+			st.Previous, _ = prevCol[i].(string)
+		}
+		if i < len(nextCol) {
+			st.Current, _ = nextCol[i].(string)
+		}
+		if i < len(dataCol) {
+			if raw, ok := dataCol[i].(string); ok {
+				var data struct {
+					Values map[string]any `json:"values"`
+				}
+				if json.Unmarshal([]byte(raw), &data) == nil {
+					st.Values = data.Values
+				}
+			}
+		}
+		transitions = append(transitions, st)
+	}
+
+	sort.SliceStable(transitions, func(i, j int) bool {
+		return transitions[i].Time.After(transitions[j].Time)
+	})
+	return transitions
 }
 
 // columnValues returns the values for the named schema field, falling back to
@@ -230,6 +286,10 @@ func decodeLabels(v any) (map[string]string, error) {
 func frameTime(v any) time.Time {
 	switch t := v.(type) {
 	case float64:
+		// Epoch milliseconds; values beyond year 5138 can only be microseconds.
+		if t >= 1e14 {
+			return time.UnixMicro(int64(t)).UTC()
+		}
 		return time.UnixMilli(int64(t)).UTC()
 	case json.Number:
 		if ms, err := t.Int64(); err == nil {

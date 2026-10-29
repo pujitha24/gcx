@@ -117,3 +117,46 @@ func TestClient_QueryStateHistory_Error(t *testing.T) {
 	_, err := client.QueryStateHistory(context.Background(), alert.StateHistoryOptions{})
 	require.Error(t, err)
 }
+
+// annotationsFrameJSON is the frame shape emitted by the annotations history
+// backend: time, text, prev, next and a JSON "data" string per transition.
+const annotationsFrameJSON = `{
+  "schema": {
+    "name": "states",
+    "fields": [
+      {"name": "time", "type": "time", "labels": {"from": "state-history", "ruleUID": "uid-1"}},
+      {"name": "text", "type": "string"},
+      {"name": "prev", "type": "string"},
+      {"name": "next", "type": "string"},
+      {"name": "data", "type": "string"}
+    ]
+  },
+  "data": {
+    "values": [
+      [1792582150000, 1792583050000000],
+      ["Rule {alertname=Rule} - A=0", "Rule {alertname=Rule} - A=-1.000000"],
+      ["Normal", "Alerting"],
+      ["Alerting", "Normal (NoData)"],
+      ["{\"values\":{\"A\":0}}", "{\"values\":{\"A\":-1}}"]
+    ]
+  }
+}`
+
+func TestClient_QueryStateHistory_AnnotationsBackend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(annotationsFrameJSON))
+	}))
+	defer srv.Close()
+
+	transitions, err := newTestClient(t, srv).QueryStateHistory(context.Background(), alert.StateHistoryOptions{RuleUID: "uid-1"})
+	require.NoError(t, err)
+	require.Len(t, transitions, 2)
+
+	assert.Equal(t, "2026-10-21T11:44:10Z", transitions[0].Time.Format(time.RFC3339))
+	assert.Equal(t, "Alerting", transitions[0].Previous)
+	assert.Equal(t, "Normal (NoData)", transitions[0].Current)
+	assert.Equal(t, "uid-1", transitions[0].RuleUID)
+	assert.InDelta(t, -1.0, transitions[0].Values["A"], 0)
+	assert.Equal(t, "Normal", transitions[1].Previous)
+}
